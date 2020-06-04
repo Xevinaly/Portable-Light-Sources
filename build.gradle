@@ -13,9 +13,9 @@ apply plugin: 'net.minecraftforge.gradle'
 apply plugin: 'eclipse'
 apply plugin: 'maven-publish'
 
-version = '1.15.2-1.0.0'
-group = 'com.github.xevinaly.portable-light-sources' // http://maven.apache.org/guides/mini/guide-naming-conventions.html
-archivesBaseName = 'portable-light-sources'
+version = '1.15.2-1.0.1'
+group = 'com.github.xevinaly.portablelightsources' // http://maven.apache.org/guides/mini/guide-naming-conventions.html
+archivesBaseName = 'portablelightsources'
 
 sourceCompatibility = targetCompatibility = compileJava.sourceCompatibility = compileJava.targetCompatibility = '1.8' // Need this here so eclipse task generates correctly.
 

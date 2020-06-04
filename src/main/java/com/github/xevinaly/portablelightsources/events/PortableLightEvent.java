@@ -9,7 +9,6 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
 import net.minecraft.entity.item.ItemEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
@@ -30,19 +29,17 @@ import net.minecraftforge.fml.common.Mod.EventBusSubscriber.Bus;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-@EventBusSubscriber(modid = com.github.xevinaly.portablelightsources.PortableLightSources.MODID, bus = Bus.FORGE)
+@EventBusSubscriber(modid = PortableLightSources.MODID, bus = Bus.FORGE)
 public class PortableLightEvent {
-    private static Map<Entity, LocationData> entityLocationData = new ConcurrentHashMap<>();
+    private static Map<World, Map<Entity, LocationData>> worldEntityLocationData = new ConcurrentHashMap<>();
     private static final Map<Item, LightSource> itemLightSources = new HashMap<>();
     private static final List<Block> replaceableBlocks = new ArrayList<>();
-    private static final List<Block> oneOverBlocks = new ArrayList<>();
     private static final List<Block> lightSourceBlocks = new ArrayList<>();
 
     @SubscribeEvent
     public static void parseTags(WorldEvent.Load event) {
         if (itemLightSources.size() == 0) {
             replaceableBlocks.addAll(BlockTags.getCollection().get(new ResourceLocation(PortableLightSources.MODID, "portable_light_replaceable")).getAllElements());
-            oneOverBlocks.addAll(BlockTags.getCollection().get(new ResourceLocation(PortableLightSources.MODID, "portable_light_one_over")).getAllElements());
             lightSourceBlocks.addAll(BlockTags.getCollection().get(new ResourceLocation(PortableLightSources.MODID, "light_sources")).getAllElements());
 
             List<Item> airOnly = new ArrayList<>();
@@ -74,50 +71,67 @@ public class PortableLightEvent {
 
     @SubscribeEvent
     public static void resetEntityLocationData(WorldEvent.Unload event) {
-        for (Map.Entry<Entity, LocationData> entry : entityLocationData.entrySet()) {
-            entry.getValue().reset();
-        }
+        if (event.getWorld() instanceof  World) {
+            World world = (World) event.getWorld();
 
-        entityLocationData = new ConcurrentHashMap<>();
+            if (world != null && worldEntityLocationData.containsKey(world)) {
+                for (Map.Entry<Entity, LocationData> entry : worldEntityLocationData.get(world).entrySet()) {
+                    entry.getValue().reset();
+                }
+
+                worldEntityLocationData.replace(world, new ConcurrentHashMap<>());
+            }
+        }
     }
 
     @SubscribeEvent
     public static void registerEntity(EntityJoinWorldEvent event) {
         Entity entity = event.getEntity();
+        World world = event.getWorld();
 
-        entityLocationData.put(entity, new LocationData());
+        if (!worldEntityLocationData.containsKey(world)) {
+            worldEntityLocationData.put(world, new ConcurrentHashMap<>());
+        }
+
+        worldEntityLocationData.get(world).put(entity, new LocationData());
     }
 
     @SubscribeEvent
     public static void checkEntityLocationAndLightStatus(TickEvent.WorldTickEvent event) {
         World world = event.world;
+        Map<Entity, LocationData> entityLocationData = worldEntityLocationData.get(world);
 
-        Iterator<Entity> entities = entityLocationData.keySet().iterator();
+        if (entityLocationData != null) {
+            Iterator<Map.Entry<Entity, LocationData>> entrySet = entityLocationData.entrySet().iterator();
 
-        while (entities.hasNext()) {
-            Entity entity = entities.next();
-            LocationData data = entityLocationData.get(entity);
-            data.reset();
+            while (entrySet.hasNext()) {
+                Map.Entry<Entity, LocationData> entry = entrySet.next();
+                Entity entity = entry.getKey();
+                LocationData data = entry.getValue();
 
-            if (entity.removed) {
-                entities.remove();
-            } else {
-                int lightValue = greatestLightSourceOnEntity(entity, world);
+                if (entity.removed) {
+                    data.reset();
+                    entrySet.remove();
+                } else {
+                    int lightValue = greatestLightSourceOnEntity(entity, world);
 
-                if (lightValue != 0) {
-                    BlockPos blockToLight = getClosestReplaceableBlock(entity, world);
-                    BlockState originalBlockState = world.getBlockState(blockToLight);
-                    BlockState newBlockState = getLitBlockState(lightValue, originalBlockState);
+                    if (lightValue != 0) {
+                        BlockPos blockToLight = getClosestReplaceableBlock(entity, world);
+                        BlockState originalBlockState = world.getBlockState(blockToLight);
+                        BlockState newBlockState = getLitBlockState(lightValue, originalBlockState);
 
 
-                    if (lightSourceBlocks.contains(originalBlockState.getBlock())) {
-                        data.add(blockToLight, () -> {});
+                        if (lightSourceBlocks.contains(originalBlockState.getBlock())) {
+                            data.add(blockToLight, () -> {});
+                        } else {
+                            data.add(blockToLight, () -> world.setBlockState(blockToLight, originalBlockState));
+                        }
+
+                        if (lightValue > world.getLightValue(blockToLight) || entity instanceof PlayerEntity) {
+                            world.setBlockState(blockToLight, newBlockState);
+                        }
                     } else {
-                        data.add(blockToLight, () -> world.setBlockState(blockToLight, originalBlockState));
-                    }
-
-                    if (lightValue > world.getLightValue(blockToLight) || entity instanceof PlayerEntity) {
-                        world.setBlockState(blockToLight, newBlockState);
+                        data.reset();
                     }
                 }
             }
@@ -137,19 +151,23 @@ public class PortableLightEvent {
 
         if (entity instanceof PlayerEntity) {
             PlayerEntity player = (PlayerEntity) entity;
+            Block blockToReplace = world.getBlockState(getClosestReplaceableBlock(entity, world)).getBlock();
+
             for (ItemStack itemStack : player.getHeldEquipment()) {
                 if (itemLightSources.containsKey(itemStack.getItem())) {
                     LightSource item = itemLightSources.get(itemStack.getItem());
-                    if (item.lightValue > lightValue && item.restrictedMedium != getMedium(world.getBlockState(entity.getPosition()).getBlock())) {
+                    if (item.lightValue > lightValue && item.restrictedMedium != getMedium(blockToReplace)) {
                         lightValue = item.lightValue;
                     }
                 }
             }
         } else if (entity instanceof ItemEntity) {
             ItemEntity itemEntity = (ItemEntity) entity;
+            Block blockToReplace = world.getBlockState(getClosestReplaceableBlock(entity, world)).getBlock();
+
             if (itemLightSources.containsKey(itemEntity.getItem().getItem())) {
                 LightSource item = itemLightSources.get(itemEntity.getItem().getItem());
-                if (item.lightValue > lightValue && item.restrictedMedium != getMedium(world.getBlockState(entity.getPosition()).getBlock())) {
+                if (item.lightValue > lightValue && item.restrictedMedium != getMedium(blockToReplace)) {
                     lightValue = item.lightValue;
                 }
             }
@@ -177,39 +195,37 @@ public class PortableLightEvent {
 
         Block blockToReplace = world.getBlockState(position).getBlock();
 
-        if (oneOverBlocks.contains(blockToReplace)) {
-            if (replaceableBlocks.contains(world.getBlockState(position.up()).getBlock())) {
-                return position.up();
-            } else if (replaceableBlocks.contains(world.getBlockState(position.down()).getBlock())) {
-                return position.down();
-            } else if (replaceableBlocks.contains(world.getBlockState(position.east()).getBlock())) {
-                return position.east();
-            } else if (replaceableBlocks.contains(world.getBlockState(position.west()).getBlock())) {
-                return position.west();
-            } else if (replaceableBlocks.contains(world.getBlockState(position.north()).getBlock())) {
-                return position.north();
-            } else if (replaceableBlocks.contains(world.getBlockState(position.south()).getBlock())) {
-                return position.south();
-            } else if (replaceableBlocks.contains(world.getBlockState(position.up().east()).getBlock())) {
-                return position.up().east();
-            } else if (replaceableBlocks.contains(world.getBlockState(position.up().west()).getBlock())) {
-                return position.up().west();
-            } else if (replaceableBlocks.contains(world.getBlockState(position.up().north()).getBlock())) {
-                return position.up().north();
-            } else if (replaceableBlocks.contains(world.getBlockState(position.up().south()).getBlock())) {
-                return position.up().south();
-            } else if (replaceableBlocks.contains(world.getBlockState(position.down().north()).getBlock())) {
-                return position.down().north();
-            } else if (replaceableBlocks.contains(world.getBlockState(position.down().east()).getBlock())) {
-                return position.down().east();
-            } else if (replaceableBlocks.contains(world.getBlockState(position.down().south()).getBlock())) {
-                return position.down().south();
-            } else if (replaceableBlocks.contains(world.getBlockState(position.down().west()).getBlock())) {
-                return position.down().west();
-            }
+        if (replaceableBlocks.contains(world.getBlockState(position.up()).getBlock())) {
+            return position.up();
+        } else if (replaceableBlocks.contains(world.getBlockState(position.down()).getBlock())) {
+            return position.down();
+        } else if (replaceableBlocks.contains(world.getBlockState(position.east()).getBlock())) {
+            return position.east();
+        } else if (replaceableBlocks.contains(world.getBlockState(position.west()).getBlock())) {
+            return position.west();
+        } else if (replaceableBlocks.contains(world.getBlockState(position.north()).getBlock())) {
+            return position.north();
+        } else if (replaceableBlocks.contains(world.getBlockState(position.south()).getBlock())) {
+            return position.south();
+        } else if (replaceableBlocks.contains(world.getBlockState(position.up().east()).getBlock())) {
+            return position.up().east();
+        } else if (replaceableBlocks.contains(world.getBlockState(position.up().west()).getBlock())) {
+            return position.up().west();
+        } else if (replaceableBlocks.contains(world.getBlockState(position.up().north()).getBlock())) {
+            return position.up().north();
+        } else if (replaceableBlocks.contains(world.getBlockState(position.up().south()).getBlock())) {
+            return position.up().south();
+        } else if (replaceableBlocks.contains(world.getBlockState(position.down().north()).getBlock())) {
+            return position.down().north();
+        } else if (replaceableBlocks.contains(world.getBlockState(position.down().east()).getBlock())) {
+            return position.down().east();
+        } else if (replaceableBlocks.contains(world.getBlockState(position.down().south()).getBlock())) {
+            return position.down().south();
+        } else if (replaceableBlocks.contains(world.getBlockState(position.down().west()).getBlock())) {
+            return position.down().west();
+        } else {
+            return position;
         }
-
-        return position;
     }
 
     private static BlockState getLitBlockState(int lightValue, BlockState originalBlockState) {
