@@ -1,0 +1,11 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:blaze",
+    "minecraft:dragon_fireball",
+    "minecraft:firework_rocket",
+    "minecraft:fireball",
+    "minecraft:magma_cube",
+    "minecraft:small_fireball"
+  ]
+}

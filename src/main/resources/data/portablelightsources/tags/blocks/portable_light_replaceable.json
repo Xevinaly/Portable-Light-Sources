@@ -1,0 +1,11 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:air",
+    "minecraft:water",
+    "minecraft:void_air",
+    "minecraft:cave_air",
+    "portablelightsources:air_light_source",
+    "portablelightsources:water_light_source"
+  ]
+}

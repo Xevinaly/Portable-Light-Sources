@@ -1,0 +1,12 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:glowstone",
+    "minecraft:glowstone_dust",
+    "minecraft:sea_lantern",
+    "minecraft:lava_bucket",
+    "minecraft:jack_o_lantern",
+    "minecraft:lantern",
+    "minecraft:end_rod"
+  ]
+}

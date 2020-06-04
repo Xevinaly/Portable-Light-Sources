@@ -1,0 +1,7 @@
+{
+  "replace": false,
+  "values": [
+    "portablelightsources:air_light_source",
+    "portablelightsources:water_light_source"
+  ]
+}

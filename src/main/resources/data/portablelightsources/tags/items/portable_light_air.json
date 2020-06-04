@@ -1,0 +1,10 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:torch",
+    "minecraft:lava_bucket",
+    "minecraft:jack_o_lantern",
+    "minecraft:lantern",
+    "minecraft:end_rod"
+  ]
+}

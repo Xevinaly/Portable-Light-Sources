@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "portablelightsources:block/air_light_source" }
+  }
+}
