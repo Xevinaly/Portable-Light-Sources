@@ -1,4 +1,4 @@
-package com.github.xevinaly.dungeonworld.util;
+package com.github.xevinaly.portablelightsources.util;
 
 public interface DelayedCall {
     void delayedCall();

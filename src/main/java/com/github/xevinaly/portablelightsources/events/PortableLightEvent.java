@@ -1,6 +1,6 @@
 package com.github.xevinaly.portablelightsources.events;
 
-import com.github.xevinaly.dungeonworld.util.DelayedCall;
+import com.github.xevinaly.portablelightsources.util.DelayedCall;
 import com.github.xevinaly.portablelightsources.PortableLightSources;
 import com.github.xevinaly.portablelightsources.blocks.AirLightSource;
 import com.github.xevinaly.portablelightsources.blocks.WaterLightSource;
