@@ -9,8 +9,10 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityType;
 import net.minecraft.entity.item.ItemEntity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.fluid.Fluids;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tags.BlockTags;
@@ -31,16 +33,30 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @EventBusSubscriber(modid = PortableLightSources.MODID, bus = Bus.FORGE)
 public class PortableLightEvent {
-    private static Map<World, Map<Entity, LocationData>> worldEntityLocationData = new ConcurrentHashMap<>();
+    private static final Map<World, Map<Entity, LocationData>> worldEntityLocationData = new ConcurrentHashMap<>();
     private static final Map<Item, LightSource> itemLightSources = new HashMap<>();
-    private static final List<Block> replaceableBlocks = new ArrayList<>();
+    private static final List<BlockState> replaceableBlockStates = new ArrayList<>();
     private static final List<Block> lightSourceBlocks = new ArrayList<>();
+    private static final List<EntityType<?>> brightEntities = new ArrayList<>();
+    private static final List<EntityType<?>> untrackedEntities = new ArrayList<>();
 
     @SubscribeEvent
     public static void parseTags(WorldEvent.Load event) {
         if (itemLightSources.size() == 0) {
-            replaceableBlocks.addAll(BlockTags.getCollection().get(new ResourceLocation(PortableLightSources.MODID, "portable_light_replaceable")).getAllElements());
+            replaceableBlockStates.add(Blocks.AIR.getDefaultState());
+            replaceableBlockStates.add(Blocks.CAVE_AIR.getDefaultState());
+            replaceableBlockStates.add(Blocks.VOID_AIR.getDefaultState());
+            replaceableBlockStates.add(Blocks.WATER.getDefaultState());
+            replaceableBlockStates.add(Fluids.WATER.getFlowingFluidState(8, false).getBlockState());
+            replaceableBlockStates.add(Fluids.WATER.getFlowingFluidState(8, true).getBlockState());
+            for (int i = 1; i <= 15; i++) {
+                replaceableBlockStates.add(((AirLightSource) ModBlocks.AIR_LIGHT_SOURCE.get()).getStateWithLightValue(i));
+                replaceableBlockStates.add(((WaterLightSource) ModBlocks.WATER_LIGHT_SOURCE.get()).getStateWithLightValue(i));
+            }
+
             lightSourceBlocks.addAll(BlockTags.getCollection().get(new ResourceLocation(PortableLightSources.MODID, "light_sources")).getAllElements());
+            brightEntities.addAll(EntityTypeTags.getCollection().get(new ResourceLocation(PortableLightSources.MODID, "bright_entities")).getAllElements());
+            untrackedEntities.addAll(EntityTypeTags.getCollection().get(new ResourceLocation(PortableLightSources.MODID, "untracked_entities")).getAllElements());
 
             List<Item> airOnly = new ArrayList<>();
             List<Item> waterOnly = new ArrayList<>();
@@ -93,6 +109,10 @@ public class PortableLightEvent {
             worldEntityLocationData.put(world, new ConcurrentHashMap<>());
         }
 
+        if (untrackedEntities.contains(entity.getType()) || (entity instanceof ItemEntity && !itemLightSources.containsKey(((ItemEntity) entity).getItem().getItem()))) {
+            return;
+        }
+
         worldEntityLocationData.get(world).put(entity, new LocationData());
     }
 
@@ -122,7 +142,21 @@ public class PortableLightEvent {
 
 
                         if (lightSourceBlocks.contains(originalBlockState.getBlock())) {
-                            data.add(blockToLight, () -> {});
+                            data.add(blockToLight, () -> {
+                                if (newBlockState.getBlock() instanceof AirLightSource) {
+                                    if (world.getBlockState(blockToLight.up()).getBlock() == Blocks.AIR) {
+                                        world.setBlockState(blockToLight, Blocks.AIR.getDefaultState());
+                                    } else {
+                                        world.setBlockState(blockToLight, Blocks.CAVE_AIR.getDefaultState());
+                                    }
+                                } else {
+                                    if (world.getBlockState(blockToLight.up()).isAir()) {
+                                        world.setBlockState(blockToLight, Blocks.WATER.getDefaultState());
+                                    } else {
+                                        world.setBlockState(blockToLight, Fluids.WATER.getFlowingFluidState(8, false).getBlockState());
+                                    }
+                                }
+                            });
                         } else {
                             data.add(blockToLight, () -> world.setBlockState(blockToLight, originalBlockState));
                         }
@@ -142,11 +176,7 @@ public class PortableLightEvent {
         int lightValue = 0;
 
         if (entity.getFireTimer() > 0) {
-            lightValue = 15;
-        }
-
-        if (EntityTypeTags.getCollection().get(new ResourceLocation(PortableLightSources.MODID, "bright_entities")).contains(entity.getType())) {
-            lightValue = 15;
+            return 15;
         }
 
         if (entity instanceof PlayerEntity) {
@@ -171,6 +201,8 @@ public class PortableLightEvent {
                     lightValue = item.lightValue;
                 }
             }
+        } else if (brightEntities.contains(entity.getType())) {
+            return 15;
         }
 
         return lightValue;
@@ -193,35 +225,35 @@ public class PortableLightEvent {
             position = position.add(0, 1, 0);
         }
 
-        Block blockToReplace = world.getBlockState(position).getBlock();
-
-        if (replaceableBlocks.contains(world.getBlockState(position.up()).getBlock())) {
+        if (replaceableBlockStates.contains(world.getBlockState(position))) {
+            return position;
+        } else if (replaceableBlockStates.contains(world.getBlockState(position.up()))) {
             return position.up();
-        } else if (replaceableBlocks.contains(world.getBlockState(position.down()).getBlock())) {
+        } else if (replaceableBlockStates.contains(world.getBlockState(position.down()))) {
             return position.down();
-        } else if (replaceableBlocks.contains(world.getBlockState(position.east()).getBlock())) {
+        } else if (replaceableBlockStates.contains(world.getBlockState(position.east()))) {
             return position.east();
-        } else if (replaceableBlocks.contains(world.getBlockState(position.west()).getBlock())) {
+        } else if (replaceableBlockStates.contains(world.getBlockState(position.west()))) {
             return position.west();
-        } else if (replaceableBlocks.contains(world.getBlockState(position.north()).getBlock())) {
+        } else if (replaceableBlockStates.contains(world.getBlockState(position.north()))) {
             return position.north();
-        } else if (replaceableBlocks.contains(world.getBlockState(position.south()).getBlock())) {
+        } else if (replaceableBlockStates.contains(world.getBlockState(position.south()))) {
             return position.south();
-        } else if (replaceableBlocks.contains(world.getBlockState(position.up().east()).getBlock())) {
+        } else if (replaceableBlockStates.contains(world.getBlockState(position.up().east()))) {
             return position.up().east();
-        } else if (replaceableBlocks.contains(world.getBlockState(position.up().west()).getBlock())) {
+        } else if (replaceableBlockStates.contains(world.getBlockState(position.up().west()))) {
             return position.up().west();
-        } else if (replaceableBlocks.contains(world.getBlockState(position.up().north()).getBlock())) {
+        } else if (replaceableBlockStates.contains(world.getBlockState(position.up().north()))) {
             return position.up().north();
-        } else if (replaceableBlocks.contains(world.getBlockState(position.up().south()).getBlock())) {
+        } else if (replaceableBlockStates.contains(world.getBlockState(position.up().south()))) {
             return position.up().south();
-        } else if (replaceableBlocks.contains(world.getBlockState(position.down().north()).getBlock())) {
+        } else if (replaceableBlockStates.contains(world.getBlockState(position.down().north()))) {
             return position.down().north();
-        } else if (replaceableBlocks.contains(world.getBlockState(position.down().east()).getBlock())) {
+        } else if (replaceableBlockStates.contains(world.getBlockState(position.down().east()))) {
             return position.down().east();
-        } else if (replaceableBlocks.contains(world.getBlockState(position.down().south()).getBlock())) {
+        } else if (replaceableBlockStates.contains(world.getBlockState(position.down().south()))) {
             return position.down().south();
-        } else if (replaceableBlocks.contains(world.getBlockState(position.down().west()).getBlock())) {
+        } else if (replaceableBlockStates.contains(world.getBlockState(position.down().west()))) {
             return position.down().west();
         } else {
             return position;
@@ -258,7 +290,7 @@ public class PortableLightEvent {
     }
 
     private static class LocationData {
-        private List<BlockData> litBlocks;
+        private final List<BlockData> litBlocks;
 
         public LocationData() {
             litBlocks = new ArrayList<>();
@@ -312,7 +344,7 @@ public class PortableLightEvent {
             }
         }
 
-        private class BlockData {
+        private static class BlockData {
             BlockPos position;
             DelayedCall resetMethod;
 
